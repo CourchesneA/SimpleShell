@@ -2,6 +2,8 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+
+#include <sys/types.h>
     //
     // This code is given for illustration purposes. You need not include or follow this
     // strictly. Feel free to writer better or bug free code. This example code block does not
@@ -25,8 +27,8 @@ int getcmd(char *prompt, char *args[], int *background)
  
     // Check if background is specified..
     if ((loc = index(line, '&')) != NULL) {
-    *background = 1;
-    *loc = ' ';
+        *background = 1;
+        *loc = ' ';
     } else
         *background = 0;
     
@@ -34,8 +36,8 @@ int getcmd(char *prompt, char *args[], int *background)
         for (int j = 0; j < strlen(token); j++)
             if (token[j] <= 32)
                 token[j] = '\0';
-            if (strlen(token) > 0)
-                args[i++] = token;
+        if (strlen(token) > 0)
+            args[i++] = token;
     }
 
     return i;
@@ -45,9 +47,30 @@ int main(void)
 {
     char *args[20];
     int bg;
+    pid_t pid;
     while(1) {
         bg = 0;
         int cnt = getcmd("\n>> ", args, &bg);
+        
+        if (strcmp(args[0], "exit") == 0)
+            exit(0);
+
+        if ((pid = fork()) < 0) {
+            printf("Forking failed, exiting");
+            exit(-1);
+        }else if (pid == 0 ) {
+            //child process execution
+            if(execvp(*args, args) < 0) {
+                printf("Execution failed, exiting");
+                exit(-1);
+            }
+            exit(0);
+        }else{
+            //parent process execution
+           if(bg == 0)
+              wait(); 
+        }
+        execvp(*args, args);
   
         /* the steps can be..:
         (1) fork a child process using fork()
