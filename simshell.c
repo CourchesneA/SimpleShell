@@ -52,7 +52,9 @@ int main(void)
     int status;
     char hist[10][20][20];
     int counter = 0;
+    int hcom;
     while(1) {
+        hcom = 0;
         bg = 0;
         args[0] = NULL;
         int cnt = getcmd("\n>> ", args, &bg);
@@ -67,7 +69,7 @@ int main(void)
                 exit(-1);
             }    
             strcpy(&hist[counter%10][j][0],args[j]);
-            printf("%s\n",&hist[counter%10][j][0]);    
+            //printf("%s\n",&hist[counter%10][j][0]);    
         }
 
         //check empty query
@@ -81,12 +83,19 @@ int main(void)
         //if args has only one string (cnt==1) and it start with !, take the following number k
         //and load hist[(k-1)%10] in args to be executed
         if(cnt == 1 && args[0][0] == 33){
+            hcom = 1;    //this command request history
             int k = atoi(args[0]+1);
             int m=0;
             char* w;
-            while( *(w = &hist[(k-1)%10][m]) != NULL )    //while there is still tokens
+            if (k>counter || k<0 || k<counter-10){
+                printf("No command found in history");
+                continue;
+            }
+            while( *(w = &hist[(k-1)%10][m]) != NULL ){    //while there is still tokens
                 args[m++] = w;        //make the args token point to the token in hist
-             
+                printf("%s ",w);
+            }
+            printf("\n");
         }
 
         if ((pid = fork()) < 0) {   //create child process
@@ -112,10 +121,5 @@ int main(void)
         }
 
         counter++;
-        /* the steps can be..:
-        (1) fork a child process using fork()
-        (2) the child process will invoke execvp()
-        (3) if background is not specified, the parent will wait,
-        otherwise parent starts the next command... */
     }
 }
