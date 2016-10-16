@@ -1,2 +1,2 @@
 myshell: simshell.c
-	gcc -g -o myshell simshell.c
+	gcc -Wall -g -o myshell simshell.c

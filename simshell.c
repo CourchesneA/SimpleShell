@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include <sys/types.h>
+#include <sys/wait.h>
     //
     // This code is given for illustration purposes. You need not include or follow this
     // strictly. Feel free to writer better or bug free code. This example code block does not
@@ -48,14 +49,36 @@ int main(void)
     char *args[20];
     int bg;
     pid_t pid;
+    int status;
+    char hist[10][20][20];
+    int counter = 0;
     while(1) {
         bg = 0;
+        args[0] = NULL;
         int cnt = getcmd("\n>> ", args, &bg);
-        
+        //Copy the content of args in the history at hist[counter%10], overwriting existing content.
+        //Run command # using the counter variable, cmd stored at counter%10 (Circular-like array)
+        int j;
+        for(j=0;j<cnt;j++){
+            if(strlen(args[j])>=20){
+                printf("Argument should not be more than 20 chars");
+                exit(-1);
+            }    
+            strcpy(&hist[counter%10][j][0],args[j]);
+            printf("%s\n",&hist[counter%10][j][0]);    
+        }
+
+        //check empty query
+        if (!args[0])
+            continue;
+
         if (strcmp(args[0], "exit") == 0)
             exit(0);
 
-        if ((pid = fork()) < 0) {
+        //if args has only one string (cnt==1) and it start with !, take the following number k
+        //and load hist[k%10] in args to be executed
+
+        if ((pid = fork()) < 0) {   //create child process
             printf("Forking failed, exiting");
             exit(-1);
         }else if (pid == 0 ) {
@@ -68,10 +91,16 @@ int main(void)
         }else{
             //parent process execution
            if(bg == 0)
-              wait(); 
+              wait(&status); 
         }
-        execvp(*args, args);
   
+        //Set args val to 0
+        int i;
+        for (i=0;i<20;i++){
+            args[i] = 0;
+        }
+
+        counter++;
         /* the steps can be..:
         (1) fork a child process using fork()
         (2) the child process will invoke execvp()
