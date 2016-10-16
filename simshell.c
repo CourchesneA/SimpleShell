@@ -56,6 +56,8 @@ int main(void)
         bg = 0;
         args[0] = NULL;
         int cnt = getcmd("\n>> ", args, &bg);
+
+        //HISTORY
         //Copy the content of args in the history at hist[counter%10], overwriting existing content.
         //Run command # using the counter variable, cmd stored at counter%10 (Circular-like array)
         int j;
@@ -75,8 +77,17 @@ int main(void)
         if (strcmp(args[0], "exit") == 0)
             exit(0);
 
+        //HISTORY
         //if args has only one string (cnt==1) and it start with !, take the following number k
-        //and load hist[k%10] in args to be executed
+        //and load hist[(k-1)%10] in args to be executed
+        if(cnt == 1 && args[0][0] == 33){
+            int k = atoi(args[0]+1);
+            int m=0;
+            char* w;
+            while( *(w = &hist[(k-1)%10][m]) != NULL )    //while there is still tokens
+                args[m++] = w;        //make the args token point to the token in hist
+             
+        }
 
         if ((pid = fork()) < 0) {   //create child process
             printf("Forking failed, exiting");
@@ -84,7 +95,7 @@ int main(void)
         }else if (pid == 0 ) {
             //child process execution
             if(execvp(*args, args) < 0) {
-                printf("Execution failed, exiting");
+                printf("Execution failed");
                 exit(-1);
             }
             exit(0);
