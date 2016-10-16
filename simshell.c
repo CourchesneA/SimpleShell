@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
     //
@@ -50,12 +51,16 @@ int main(void)
     int bg;
     pid_t pid;
     int status;
-    char hist[10][20][20];
+    char hist[10][20][30];
     int counter = 0;
-    int hcom;
+    //int hcom;
+    int rdloc;
+    int pipeloc;
     while(1) {
-        hcom = 0;
+        //hcom = 0;
         bg = 0;
+        rdloc = -1;
+        pipeloc = -1;
         args[0] = NULL;
         int cnt = getcmd("\n>> ", args, &bg);
 
@@ -64,8 +69,8 @@ int main(void)
         //Run command # using the counter variable, cmd stored at counter%10 (Circular-like array)
         int j;
         for(j=0;j<cnt;j++){
-            if(strlen(args[j])>=20){
-                printf("Argument should not be more than 20 chars");
+            if(strlen(args[j])>=30){
+                printf("Argument should not be more than 30 chars");
                 exit(-1);
             }    
             strcpy(&hist[counter%10][j][0],args[j]);
@@ -76,14 +81,33 @@ int main(void)
         if (!args[0])
             continue;
 
-        if (strcmp(args[0], "exit") == 0)
+        //Built-in features
+        if (strcmp(args[0], "exit") == 0)       //exit feature
             exit(0);
+
+        if(strcmp(args[0], "pwd") == 0){        //pwd feature
+            char buff[30];
+            printf("%s\n",getcwd(buff,30));
+            continue;   //skip execution since its done
+        }
+
+        if(strcmp(args[0], "cd") == 0){         //cd feature
+            if(cnt > 2){
+                printf("Too many arguments\n");
+                continue;
+            }
+            if(chdir(args[1])==-1){
+                printf("Error, could not change directory to %s\n",args[1]);
+            }else
+                printf("Changing dir for %s\n",args[1]);
+            continue;        //skip execution since its done
+        }
 
         //HISTORY
         //if args has only one string (cnt==1) and it start with !, take the following number k
         //and load hist[(k-1)%10] in args to be executed
         if(cnt == 1 && args[0][0] == 33){
-            hcom = 1;    //this command request history
+            //hcom = 1;    //this command request history
             int k = atoi(args[0]+1);
             int m=0;
             char* w;
@@ -98,24 +122,57 @@ int main(void)
             printf("\n");
         }
 
+        //Scan the token for redirect or pipe characters
+        int i;
+        for(i=0;i<cnt;i++){
+            if(*args[i]==62){
+                rdloc = i;
+                break;      //we will only handle simple cases (one redirection or pipe)
+            }
+            if(*args[i]==124){
+                pipeloc = i;
+                break;      //we will only handle simple cases (one redirection or pipe)
+            }
+        }
         if ((pid = fork()) < 0) {   //create child process
             printf("Forking failed, exiting");
             exit(-1);
         }else if (pid == 0 ) {
             //child process execution
-            if(execvp(*args, args) < 0) {
+
+            //Check if there is a redirection char (rdloc != -1)
+            if(rdloc != -1){
+                char* lbuf[20];
+                //char* rbuf;
+                for(i=0;i<rdloc;i++){   //create LHS buffer
+                    lbuf[i]=args[i];
+                    printf("T: %s\n",lbuf[i]);
+                }
+                /*
+                for(i=rdloc; i<cnt; i++){
+                    rbuf[i] = args[i];  //create RHS buffer
+                }*/
+                //for output redirection we dont have to save STDOUT because its the child process
+                //and it will die soon after
+                close(1);
+                open(args[rdloc+1],O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+                //printf("T: %s\n",args[rdloc+1]);
+                execvp(*lbuf,lbuf);
+            }else if(execvp(*args, args) < 0) {
                 printf("Execution failed");
                 exit(-1);
             }
+            
+            //check if there is a pipe character
+            //TODO
             exit(0);
         }else{
             //parent process execution
            if(bg == 0)
-              wait(&status); 
+              waitpid(pid,&status,0);
         }
   
         //Set args val to 0
-        int i;
         for (i=0;i<20;i++){
             args[i] = 0;
         }
