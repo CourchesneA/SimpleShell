@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include <time.h>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -107,7 +108,6 @@ int main(void)
         //if args has only one string (cnt==1) and it start with !, take the following number k
         //and load hist[(k-1)%10] in args to be executed
         if(cnt == 1 && args[0][0] == 33){
-            //hcom = 1;    //this command request history
             int k = atoi(args[0]+1);
             int m=0;
             char* w;
@@ -117,7 +117,6 @@ int main(void)
             }
             while( *(w = &hist[(k-1)%10][m]) != NULL ){    //while there is still tokens
                 args[m++] = w;        //make the args token point to the token in hist
-                printf("%s ",w);
             }
             printf("\n");
         }
@@ -134,6 +133,7 @@ int main(void)
                 break;      //we will only handle simple cases (one redirection or pipe)
             }
         }
+        //Forking for process execution
         if ((pid = fork()) < 0) {   //create child process
             printf("Forking failed, exiting");
             exit(-1);
@@ -143,33 +143,68 @@ int main(void)
             //Check if there is a redirection char (rdloc != -1)
             if(rdloc != -1){
                 char* lbuf[20];
-                //char* rbuf;
                 for(i=0;i<rdloc;i++){   //create LHS buffer
                     lbuf[i]=args[i];
                     printf("T: %s\n",lbuf[i]);
                 }
-                /*
-                for(i=rdloc; i<cnt; i++){
-                    rbuf[i] = args[i];  //create RHS buffer
-                }*/
                 //for output redirection we dont have to save STDOUT because its the child process
                 //and it will die soon after
                 close(1);
                 open(args[rdloc+1],O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
                 //printf("T: %s\n",args[rdloc+1]);
                 execvp(*lbuf,lbuf);
+            }else if(pipeloc != -1){    //found a pipe character
+                char* lbuf[20];
+                char* rbuf[20];
+                for(i=0;i<pipeloc;i++){
+                    lbuf[i] = args[i];      //create LHS buffer
+                }
+                for(i=pipeloc+1;i<cnt;i++){
+                    rbuf[i-(pipeloc+1)] = args[i];      //create RHS buffer
+                }
+                
+                //Here another fork create the pipe for both commands
+                int pfd[2];
+                pipe(pfd);
+                pid_t ccpid;
+                if((ccpid=fork())==0){
+                    //child-child process
+                    close(pfd[1]);
+                    close(0);   //close stdin
+                    dup(pfd[0]);    //copy read-end of pipe to input file descriptor
+                    //printf("Child-Child evaluating: %s\nwith input from pipe \n",*rbuf);
+                    printf("cc exec result : %i\n",execvp(*rbuf,rbuf));
+                    /*
+                    if(execvp(*rbuf,rbuf) < 0){
+                        printf("Execution of child-child failed\n");
+                        exit(-1);
+                    }*/
+                }else{
+                    //child process
+                    close(pfd[0]);
+                    close(1);   //close stdout
+                    dup(pfd[1]); //copy write-end of the pipe to output file descriptor
+                    printf("Result = %d\n",execvp(*lbuf,lbuf));
+                    /*
+                    if(execvp(*lbuf,lbuf) < 0){
+                        //printf("Execution of child failed\n");
+                        exit(-1);
+                    }*/
+                    printf("ccpid : %d\n",ccpid);
+                    waitpid(ccpid,&status,0);
+                }
+
             }else if(execvp(*args, args) < 0) {
-                printf("Execution failed");
+                printf("Execution failed: %s\n",args[0]);
                 exit(-1);
             }
-            
-            //check if there is a pipe character
-            //TODO
             exit(0);
         }else{
             //parent process execution
-           if(bg == 0)
-              waitpid(pid,&status,0);
+           if(bg == 0){
+               //printf("parent waiting\n");
+               waitpid(pid,&status,0);
+           }
         }
   
         //Set args val to 0
