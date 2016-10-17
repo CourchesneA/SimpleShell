@@ -54,9 +54,22 @@ int main(void)
     int status;
     char hist[10][20][30];
     int counter = 0;
-    //int hcom;
+    int i;
+    //int hcom;   //history command
     int rdloc;
     int pipeloc;
+    //now initializing pointer to jobs array to share between processes
+    int jarr[15];
+    int *jarrp;
+    jarrp = jarr;
+    int jarrc=0;
+    int *jarrcp;
+    jarrcp = &jarrc;
+
+    for(i=0;i<15;i++){  //initialize jobs array with -1
+        jarr[i] = -1;
+    }
+    int exitval;
     while(1) {
         //hcom = 0;
         bg = 0;
@@ -64,6 +77,7 @@ int main(void)
         pipeloc = -1;
         args[0] = NULL;
         int cnt = getcmd("\n>> ", args, &bg);
+        exitval = 0;
 
         //HISTORY
         //Copy the content of args in the history at hist[counter%10], overwriting existing content.
@@ -82,9 +96,41 @@ int main(void)
         if (!args[0])
             continue;
 
+
         //Built-in features
         if (strcmp(args[0], "exit") == 0)       //exit feature
             exit(0);
+
+        if (strcmp(args[0], "jobs") == 0){       //jobs feature
+            int ans;
+            for(i = 0; i<jarrc; i++){
+                if(jarr[i] == -1)
+                    continue;
+                //printf("Waitpid for %d\n",jarr[i]);
+                ans = waitpid(jarr[i],&status,WNOHANG);   //"Ping" a process
+                if( ans > 0 ){   //pid has terminated, remove it
+                    jarr[i] = -1;
+                    for(j=i; j<14;j++){
+                        jarr[j]=jarr[j+1];
+                    }
+                    jarrc--;
+                }else if( ans == 0 ){  //pid is running, print it
+                    printf("%d. PID = %d\n",i+1,jarrp[i]);
+                }else if( ans < 0){  //process does not exists
+                    //printf("Should not happen: pid was %d\n",jarr[i]);
+                    perror("Waitpid error\n");
+                }
+            }
+            continue;
+        }
+
+        if (strcmp(args[0], "fg") == 0 ){   //fg feature
+            int jnum = 1;
+            if( cnt > 1 ){
+                jnum = atoi(args[1]);
+            }
+            waitpid(jarr[jnum-1],&status,0);
+        }
 
         if(strcmp(args[0], "pwd") == 0){        //pwd feature
             char buff[30];
@@ -108,6 +154,7 @@ int main(void)
         //if args has only one string (cnt==1) and it start with !, take the following number k
         //and load hist[(k-1)%10] in args to be executed
         if(cnt == 1 && args[0][0] == 33){
+            //hcom = 1;
             int k = atoi(args[0]+1);
             int m=0;
             char* w;
@@ -116,13 +163,13 @@ int main(void)
                 continue;
             }
             while( *(w = &hist[(k-1)%10][m]) != NULL ){    //while there is still tokens
+                printf("%s ",w);
                 args[m++] = w;        //make the args token point to the token in hist
             }
             printf("\n");
         }
 
         //Scan the token for redirect or pipe characters
-        int i;
         for(i=0;i<cnt;i++){
             if(*args[i]==62){
                 rdloc = i;
@@ -168,6 +215,7 @@ int main(void)
                 pipe(pfd);
                 pid_t ccpid;
                 if((ccpid=fork())==0){
+                    *(jarrp+(*jarrcp)++)=getpid();
                     //child-child process
                     close(pfd[1]);
                     close(0);   //close stdin
@@ -184,26 +232,54 @@ int main(void)
                     close(pfd[0]);
                     close(1);   //close stdout
                     dup(pfd[1]); //copy write-end of the pipe to output file descriptor
+
                     printf("Result = %d\n",execvp(*lbuf,lbuf));
                     /*
                     if(execvp(*lbuf,lbuf) < 0){
                         //printf("Execution of child failed\n");
                         exit(-1);
                     }*/
-                    printf("ccpid : %d\n",ccpid);
+                    //printf("ccpid : %d\n",ccpid);
                     waitpid(ccpid,&status,0);
                 }
 
             }else if(execvp(*args, args) < 0) {
                 printf("Execution failed: %s\n",args[0]);
-                exit(-1);
+                exitval =-1;
             }
-            exit(0);
+            //remove this process from the jobs
+            /*
+            printf("Looking for process in %d processes\n",*jarrcp);
+            for(i=0; i<*jarrcp;i++){
+                if(*(jarrp+i) == getpid()){
+                    printf("Removing process:%d\n",getpid());
+                    *(jarrp+i)=-1;
+                    (*jarrcp)--;
+                    break;
+                }
+            } */   
+            exit(exitval);
         }else{
             //parent process execution
+           
+            printf("Adding process: %d\n",pid);
+            *(jarrp+(*jarrcp)++)=pid;
+
            if(bg == 0){
                //printf("parent waiting\n");
                waitpid(pid,&status,0);
+               //process has terminated, remove it from the job list
+
+               for(i=0;i<15;i++){
+                   if(jarr[i]==pid){
+                       printf("Removing process %d\n", pid);
+                       jarr[i] = -1;
+                       for(j=i; j<14;j++){
+                           jarr[j]=jarr[j+1];
+                       }
+                   }
+               }
+               jarrc--;
            }
         }
   
